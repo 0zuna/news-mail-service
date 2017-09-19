@@ -30,7 +30,7 @@ $app->get('/prepare/', function (Request $request, Response $response) {
 	$rest = $time->modify('-5 minutes');
 	$full=$rest->format('H:i:s');
 	
-	$sakura=$this->db->prepare("select idEditorial, Periodico, Seccion, Categoria, NumeroPagina, Autor, Fecha, Hora, Titulo, Encabezado, Texto, PaginaPeriodico, idCapturista, calificacionSemantica, calificacionLexica, Activo, Foto, PieFoto from noticiasDia where Hora>'$full'");
+	$sakura=$this->db->prepare("select idEditorial, Periodico, Seccion, Categoria, NumeroPagina, Autor, Fecha, Hora, Titulo, Encabezado, Texto, PaginaPeriodico, idCapturista, calificacionSemantica, calificacionLexica, Activo, Foto, PieFoto from noticiasDia where Hora>'$full' and Categoria=80");
 	$sakura->execute();
 	$sakura->fetchAll(PDO::FETCH_FUNC, function($idEditorial,$Periodico, $Seccion, $Categoria, $NumeroPagina, $Autor, $Fecha, $Hora, $Titulo, $Encabezado, $Texto, $PaginaPeriodico, $idCapturista, $calificacionSemantica, $calificacionLexica, $Activo, $Foto, $PieFoto){
 		$sakura=$this->db->prepare("insert into FeedNewPemex(
