@@ -1,6 +1,9 @@
 <?php
 use \Psr\Http\Message\ServerRequestInterface as Request;
 use \Psr\Http\Message\ResponseInterface as Response;
+use Slim\Views\Twig;                                                                                               
+use Slim\Views\TwigExtension;
+use Sendinblue\Mailin;
 require 'vendor/autoload.php';
 ini_set('date.timezone', 'America/Mexico_City');
 
@@ -11,7 +14,7 @@ $config['db']['user']   = "root";
 $config['db']['pass']   = "Gaddp552014";
 $config['db']['dbname'] = "monitoreoGa";
 $config['db']['charset']= "utf8";
-$config['db']['port']	= "3307";
+$config['db']['port']	= "3306";
 
 $app = new \Slim\App(["settings" => $config]);
 $container = $app->getContainer();
@@ -23,6 +26,18 @@ $container['db'] = function ($c) {
 	$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 	return $pdo;
 };
+//TWIG                                                                                                             
+$container['view'] = function ($container) {
+	$view = new Twig('./templates', [
+		'cache' => false,
+		'debug' => true,
+	]);
+
+	$basePath = rtrim(str_ireplace('index.php', '', $container['request']->getUri()->getBasePath()), '/');
+	$view->addExtension(new TwigExtension($container['router'], $basePath));
+	$view->addExtension(new Twig_Extension_Debug());
+	return $view;
+}; 
 $app->get('/prepare/', function (Request $request, Response $response) {
 	$sakura=$this->db->prepare("delete from FeedNewPemex");
 	$sakura->execute();
@@ -76,5 +91,43 @@ $app->get('/prepare/', function (Request $request, Response $response) {
 				);
 		$sakura->execute();
 	});
+	$ch = curl_init('192.168.3.154/news-mail-service/mail/corpogas/');
+	curl_exec($ch);
+	curl_close($ch);
+});
+$app->get('/mail/{hinata}/', function (Request $request, Response $response) {
+	global $ids;
+	$ids=array();
+	$hinata = $request->getAttribute('hinata');
+	$sakura=$this->db->prepare("select
+					menu_items.query
+				from boards 
+					inner join menus on boards.id=menus.board_id
+					inner join menu_items on menus.id=menu_items.menu_id
+				where boards.alias='$hinata'");
+	$sakura->execute();
+	$data=$sakura->fetchAll(PDO::FETCH_FUNC, function($query){
+		if($query!=''){
+		$sakura=$this->db->prepare(str_replace('noticiasDia', 'FeedNewPemex', $query));
+		$sakura->execute();
+		$sakura->fetchAll(PDO::FETCH_FUNC, function($idPeriodico,$idEditorial,$tes){
+			global $ids;
+			$r=(int)$tes;
+			$sakura=$this->db->prepare("select Titulo from noticiasDia where idEditorial=$idEditorial or idEditorial=$idPeriodico or idEditorial=$r");
+			$sakura->execute();
+			$ids=array_merge($ids,$sakura->fetchAll());
+		});}
+	});
+	if($ids){
+		$men=$this->view->fetch('mail.tpl.php',['items'=>$ids]);
+		$mailin = new Mailin("https://api.sendinblue.com/v2.0","wjSbMAENLm2TGfpW");
+		$data = array(
+			"to" =>["er1k_92@hotmail.com"=>"Ninja!"],
+			"from" =>["gaimpresos@gacomunicacion.com", "ga impresos!"],
+			"subject" => "NEWS",
+			"html" => $men,
+			);
+		$mailin->send_email($data);
+	}
 });
 $app->run();
