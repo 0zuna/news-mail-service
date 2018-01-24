@@ -42,10 +42,10 @@ $app->get('/prepare/', function (Request $request, Response $response) {
 	$sakura=$this->db->prepare("delete from FeedNewPemex");
 	$sakura->execute();
 	$time = new DateTime();
-	$rest = $time->modify('-5 minutes');
+	$rest = $time->modify('-5 hour');
 	$full=$rest->format('H:i:s');
 	
-	$sakura=$this->db->prepare("select idEditorial, Periodico, Seccion, Categoria, NumeroPagina, Autor, Fecha, Hora, Titulo, Encabezado, Texto, PaginaPeriodico, idCapturista, calificacionSemantica, calificacionLexica, Activo, Foto, PieFoto from noticiasDia where Hora>'$full' and Categoria=80");
+	$sakura=$this->db->prepare("select idEditorial, Periodico, Seccion, Categoria, NumeroPagina, Autor, Fecha, Hora, Titulo, Encabezado, Texto, PaginaPeriodico, idCapturista, calificacionSemantica, calificacionLexica, Activo, Foto, PieFoto from noticiasDia where Hora>'$full' and fecha = CURDATE()");
 	$sakura->execute();
 	$sakura->fetchAll(PDO::FETCH_FUNC, function($idEditorial,$Periodico, $Seccion, $Categoria, $NumeroPagina, $Autor, $Fecha, $Hora, $Titulo, $Encabezado, $Texto, $PaginaPeriodico, $idCapturista, $calificacionSemantica, $calificacionLexica, $Activo, $Foto, $PieFoto){
 		$sakura=$this->db->prepare("insert into FeedNewPemex(
@@ -96,6 +96,7 @@ $app->get('/prepare/', function (Request $request, Response $response) {
 	curl_close($ch);
 });
 $app->get('/mail/{hinata}/', function (Request $request, Response $response) {
+	$n=fopen("log", "a");
 	global $ids;
 	$ids=array();
 	$hinata = $request->getAttribute('hinata');
@@ -106,7 +107,7 @@ $app->get('/mail/{hinata}/', function (Request $request, Response $response) {
 					inner join menu_items on menus.id=menu_items.menu_id
 				where boards.alias='$hinata'");
 	$sakura->execute();
-	$data=$sakura->fetchAll(PDO::FETCH_FUNC, function($query){
+	$sakura->fetchAll(PDO::FETCH_FUNC, function($query){
 		if($query!=''){
 		$sakura=$this->db->prepare(str_replace('noticiasDia', 'FeedNewPemex', $query));
 		$sakura->execute();
@@ -128,6 +129,58 @@ $app->get('/mail/{hinata}/', function (Request $request, Response $response) {
 			"html" => $men,
 			);
 		$mailin->send_email($data);
+		echo 'mail';
+	}
+	fclose($n);
+});
+$app->get('/sakura/{hinata}/', function (Request $request, Response $response) {
+	global $ids;
+	global $mai;
+	$ids=array();
+	$mai=array();
+	$hinata = $request->getAttribute('hinata');
+	$sakura=$this->db->prepare("select
+					menu_items.query_web,
+					boards.id
+				from boards 
+					inner join menus on boards.id=menus.board_id
+					inner join menu_items on menus.id=menu_items.menu_id
+				where boards.alias='$hinata'");
+	$sakura->execute();
+	$sakura->fetchAll(PDO::FETCH_FUNC, function($query,$id){
+		global $ids;
+		if($query!=''){
+			$query=str_replace("CONCAT(DATE_FORMAT(n.Fecha, '%Y-%m-%d'),' ',n.Hora) as Fecha,", '', $query);
+			$sakura=$this->db->prepare("select n.Titulo, n.Encabezado, n.idEditorial as idEditorial, $id as board_id from ($query) as n left join notification_controls no on n.idEditorial=no.idEditorial where no.idEditorial is null group by n.idEditorial");
+			$sakura->execute();
+			$ids=array_merge($ids, $sakura->fetchAll());
+		}
+	});
+	if($ids){
+		$ids = array_map("unserialize", array_unique(array_map("serialize", $ids)));
+		foreach ($ids as $value) {
+			$value=(object) $value;
+			$sakura=$this->db->prepare("insert into notification_controls(idEditorial, user_id, board_id) values(".$value->idEditorial.",1,".$value->board_id.")");
+			$sakura->execute();
+		}
+		$sakura=$this->db->prepare("select email, nombre from notification_mails where board_id=".$ids[0]['board_id']." and activo=1");
+		$sakura->execute();
+		$sakura->fetchAll(PDO::FETCH_FUNC, function($sakura,$hinata){
+			global $mai;
+			$mai=array_merge($mai,[$sakura=>$hinata]);
+		});
+		if($mai){
+			$men=$this->view->fetch('mail.tpl.php',['items'=>$ids]);
+			$mailin = new Mailin("https://api.sendinblue.com/v2.0","wjSbMAENLm2TGfpW");
+			$data = array(
+				"to" =>$mai,
+				"from" =>["gaimpresos@gacomunicacion.com", "ga impresos!"],
+				"subject" => "Notas Nuevas",
+				"html" => $men,
+				);
+			$mailin->send_email($data);
+		}
 	}
 });
+
 $app->run();

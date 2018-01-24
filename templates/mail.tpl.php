@@ -52,7 +52,7 @@
 						{{item['Titulo']}}
 					</div>
 					{%if(item)%}
-					<a class='button' href='http://187.247.253.5{{item.gen.general}}'>Reporte ({{item.noti.Total}} news)</a>
+					<a class='button' href="{{item['Encabezado']}}">Nueva</a>
 					{%endif%}
 				</div>
 				{% endfor %}
