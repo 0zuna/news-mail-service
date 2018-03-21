@@ -6,6 +6,7 @@ use Slim\Views\TwigExtension;
 use Sendinblue\Mailin;
 require 'vendor/autoload.php';
 ini_set('date.timezone', 'America/Mexico_City');
+setlocale(LC_ALL,"es_MX.UTF8");
 
 $config['displayErrorDetails'] = true;
 $config['addContentLengthHeader'] = false;
@@ -141,29 +142,35 @@ $app->get('/sakura/{hinata}/', function (Request $request, Response $response) {
 	$hinata = $request->getAttribute('hinata');
 	$sakura=$this->db->prepare("select
 					menu_items.query_web,
-					boards.id
+					boards.id,
+					menu_items.text
 				from boards 
 					inner join menus on boards.id=menus.board_id
 					inner join menu_items on menus.id=menu_items.menu_id
 				where boards.alias='$hinata'");
 	$sakura->execute();
-	$sakura->fetchAll(PDO::FETCH_FUNC, function($query,$id){
+	$sakura->fetchAll(PDO::FETCH_FUNC, function($query,$id,$naomi){
 		global $ids;
 		if($query!=''){
 			$query=str_replace("CONCAT(DATE_FORMAT(n.Fecha, '%Y-%m-%d'),' ',n.Hora) as Fecha,", '', $query);
-			$sakura=$this->db->prepare("select n.Titulo, n.Encabezado, n.idEditorial as idEditorial, $id as board_id from ($query) as n left join notification_controls no on n.idEditorial=no.idEditorial where no.idEditorial is null group by n.idEditorial");
+			$sakura=$this->db->prepare("select n.Titulo, n.Encabezado, n.idEditorial as idEditorial, n.idPeriodico, n.Fecha, $id as board_id from ($query) as n left join notification_controls no on n.idEditorial=no.idEditorial where no.idEditorial is null group by n.idEditorial");
 			$sakura->execute();
-			$ids=array_merge($ids, $sakura->fetchAll());
+			$haruka=$sakura->fetchAll();
+			if($haruka)
+				array_push($ids, ['naomi'=>$naomi,'haruka'=> $haruka]);
 		}
 	});
 	if($ids){
-		$ids = array_map("unserialize", array_unique(array_map("serialize", $ids)));
-		foreach ($ids as $value) {
-			$value=(object) $value;
-			$sakura=$this->db->prepare("insert into notification_controls(idEditorial, user_id, board_id) values(".$value->idEditorial.",1,".$value->board_id.")");
-			$sakura->execute();
+		//$ids = array_map("unserialize", array_unique(array_map("serialize", $ids)));
+		foreach ($ids as $k=>$value) {
+			foreach ($value['haruka'] as $k2=>$value2) {
+				$value['haruka'][$k2]['Fecha']=strftime("%A %d de %B del %Y",strtotime($value2['Fecha']));
+				$sakura=$this->db->prepare("insert into notification_controls(idEditorial, user_id, board_id) values(".$value2['idEditorial'].",1,".$value2['board_id'].")");
+				$sakura->execute();
+			}
+			$ids[$k]['haruka']=$value['haruka'];
 		}
-		$sakura=$this->db->prepare("select email, nombre from notification_mails where board_id=".$ids[0]['board_id']." and activo=1");
+		$sakura=$this->db->prepare("select email, nombre from notification_mails where board_id=".$ids[0]['haruka'][0]['board_id']." and activo=1");
 		$sakura->execute();
 		$sakura->fetchAll(PDO::FETCH_FUNC, function($sakura,$hinata){
 			global $mai;
